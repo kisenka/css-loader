@@ -31,6 +31,7 @@ const {
 } = require('./utils');
 const Warning = require('./Warning');
 const CssSyntaxError = require('./CssSyntaxError');
+const { NAMESPACE } = require('./CssModulesOptimizePlugin');
 
 function loader(content, map, meta) {
   const options = getOptions(this) || {};
@@ -39,6 +40,17 @@ function loader(content, map, meta) {
 
   const callback = this.async();
   const sourceMap = options.sourceMap || false;
+  const { _compiler: compiler } = this;
+
+  const parentCompiler = compiler.isChild()
+    ? compiler.parentCompilation.compiler
+    : null;
+
+  const treeShakingPlugin = parentCompiler
+    ? parentCompiler.options.plugins.find(
+        (p) => p.NAMESPACE && p.NAMESPACE === NAMESPACE
+      )
+    : this[NAMESPACE];
 
   /* eslint-disable no-param-reassign */
   if (sourceMap) {
@@ -180,54 +192,66 @@ function loader(content, map, meta) {
         )}).locals[${JSON.stringify(item.export)}] + "`;
       };
 
-      const exports = messages
-        .filter((message) => message.type === 'export')
-        .reduce((accumulator, message) => {
-          const { key, value } = message.item;
+      const exportMessages = messages.filter(
+        (message) => message.type === 'export'
+      );
 
-          let valueAsString = JSON.stringify(value);
+      const exportObj = exportMessages.reduce((acc, message) => {
+        const { key, value } = message.item;
+        acc[key] = value;
+        return acc;
+      }, {});
 
-          valueAsString = valueAsString.replace(
-            placholderRegExps.importItemG,
-            importItemReplacer
-          );
+      if (treeShakingPlugin) {
+        treeShakingPlugin.files.set(this.request, exportObj);
+      }
 
-          function addEntry(k) {
-            accumulator.push(`\t${JSON.stringify(k)}: ${valueAsString}`);
-          }
+      const exports = exportMessages.reduce((accumulator, message) => {
+        const { key, value } = message.item;
 
-          let targetKey;
+        let valueAsString = JSON.stringify(value);
 
-          switch (options.camelCase) {
-            case true:
-              addEntry(key);
-              targetKey = camelCase(key);
+        valueAsString = valueAsString.replace(
+          placholderRegExps.importItemG,
+          importItemReplacer
+        );
 
-              if (targetKey !== key) {
-                addEntry(targetKey);
-              }
-              break;
-            case 'dashes':
-              addEntry(key);
-              targetKey = dashesCamelCase(key);
+        function addEntry(k) {
+          accumulator.push(`\t${JSON.stringify(k)}: ${valueAsString}`);
+        }
 
-              if (targetKey !== key) {
-                addEntry(targetKey);
-              }
-              break;
-            case 'only':
-              addEntry(camelCase(key));
-              break;
-            case 'dashesOnly':
-              addEntry(dashesCamelCase(key));
-              break;
-            default:
-              addEntry(key);
-              break;
-          }
+        let targetKey;
 
-          return accumulator;
-        }, []);
+        switch (options.camelCase) {
+          case true:
+            addEntry(key);
+            targetKey = camelCase(key);
+
+            if (targetKey !== key) {
+              addEntry(targetKey);
+            }
+            break;
+          case 'dashes':
+            addEntry(key);
+            targetKey = dashesCamelCase(key);
+
+            if (targetKey !== key) {
+              addEntry(targetKey);
+            }
+            break;
+          case 'only':
+            addEntry(camelCase(key));
+            break;
+          case 'dashesOnly':
+            addEntry(dashesCamelCase(key));
+            break;
+          default:
+            addEntry(key);
+            break;
+        }
+
+        return accumulator;
+      }, []);
 
       if (options.exportOnlyLocals) {
         return callback(
