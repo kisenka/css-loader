@@ -2,36 +2,37 @@
   MIT License http://www.opensource.org/licenses/mit-license.php
   Author Tobias Koppers @sokra
 */
-import validateOptions from 'schema-utils';
-import postcss from 'postcss';
-import postcssPkg from 'postcss/package.json';
-import localByDefault from 'postcss-modules-local-by-default';
-import extractImports from 'postcss-modules-extract-imports';
-import modulesScope from 'postcss-modules-scope';
-import modulesValues from 'postcss-modules-values';
-import {
+const validateOptions = require('schema-utils');
+const postcss = require('postcss');
+const postcssPkg = require('postcss/package.json');
+const localByDefault = require('postcss-modules-local-by-default');
+const extractImports = require('postcss-modules-extract-imports');
+const modulesScope = require('postcss-modules-scope');
+const modulesValues = require('postcss-modules-values');
+
+const {
   getOptions,
   isUrlRequest,
   urlToRequest,
   getRemainingRequest,
   getCurrentRequest,
   stringifyRequest,
-} from 'loader-utils';
-import camelCase from 'lodash/camelCase';
+} = require('loader-utils');
+const camelCase = require('lodash/camelCase');
 
-import schema from './options.json';
-import { importParser, icssParser, urlParser } from './plugins';
-import {
+const schema = require('./options.json');
+const { importParser, icssParser, urlParser } = require('./plugins');
+const {
   getLocalIdent,
   getImportPrefix,
   placholderRegExps,
   dashesCamelCase,
   getFilter,
-} from './utils';
-import Warning from './Warning';
-import CssSyntaxError from './CssSyntaxError';
+} = require('./utils');
+const Warning = require('./Warning');
+const CssSyntaxError = require('./CssSyntaxError');
 
-export default function loader(content, map, meta) {
+function loader(content, map, meta) {
   const options = getOptions(this) || {};
 
   validateOptions(schema, options, 'CSS Loader');
@@ -352,3 +353,6 @@ export default function loader(content, map, meta) {
       );
     });
 }
+
+module.exports = loader;
+module.exports.default = loader;

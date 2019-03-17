@@ -7,7 +7,7 @@
   "author": "Tobias Koppers @sokra",
   "homepage": "https://github.com/webpack-contrib/css-loader",
   "bugs": "https://github.com/webpack-contrib/css-loader/issues",
-  "main": "dist/cjs.js",
+  "main": "src/index.js",
   "engines": {
     "node": ">= 6.9.0"
   },

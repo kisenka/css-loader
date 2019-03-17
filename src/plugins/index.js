@@ -1,5 +1,3 @@
-import importParser from './postcss-import-parser';
-import icssParser from './postcss-icss-parser';
-import urlParser from './postcss-url-parser';
-
-export { importParser, icssParser, urlParser };
+module.exports.importParser = require('./postcss-import-parser');
+module.exports.icssParser = require('./postcss-icss-parser');
+module.exports.urlParser = require('./postcss-url-parser');

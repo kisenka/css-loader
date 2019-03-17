@@ -2,9 +2,9 @@
   MIT License http://www.opensource.org/licenses/mit-license.php
   Author Tobias Koppers @sokra
 */
-import path from 'path';
+const path = require('path');
 
-import loaderUtils from 'loader-utils';
+const loaderUtils = require('loader-utils');
 
 const placholderRegExps = {
   importItemG: /___CSS_LOADER_IMPORT___([0-9]+)___/g,
@@ -75,10 +75,8 @@ function getFilter(filter, resourcePath, defaultFilter = null) {
   };
 }
 
-export {
-  getImportPrefix,
-  getLocalIdent,
-  placholderRegExps,
-  dashesCamelCase,
-  getFilter,
-};
+module.exports.getImportPrefix = getImportPrefix;
+module.exports.getLocalIdent = getLocalIdent;
+module.exports.placholderRegExps = placholderRegExps;
+module.exports.dashesCamelCase = dashesCamelCase;
+module.exports.getFilter = getFilter;

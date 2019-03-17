@@ -1,6 +1,6 @@
-import postcss from 'postcss';
-import valueParser from 'postcss-value-parser';
-import _ from 'lodash';
+const postcss = require('postcss');
+const valueParser = require('postcss-value-parser');
+const _ = require('lodash');
 
 const pluginName = 'postcss-url-parser';
 
@@ -87,7 +87,7 @@ function walkDeclsWithUrl(css, result, filter) {
   return items;
 }
 
-export default postcss.plugin(
+module.exports = postcss.plugin(
   pluginName,
   (options = {}) =>
     function process(css, result) {

@@ -1,11 +1,11 @@
-import postcss from 'postcss';
-import valueParser from 'postcss-value-parser';
-import { extractICSS } from 'icss-utils';
-import loaderUtils from 'loader-utils';
+const postcss = require('postcss');
+const valueParser = require('postcss-value-parser');
+const { extractICSS } = require('icss-utils');
+const loaderUtils = require('loader-utils');
 
 const pluginName = 'postcss-icss-parser';
 
-export default postcss.plugin(
+module.exports = postcss.plugin(
   pluginName,
   () =>
     function process(css, result) {
