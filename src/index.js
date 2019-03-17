@@ -31,7 +31,7 @@ const {
 } = require('./utils');
 const Warning = require('./Warning');
 const CssSyntaxError = require('./CssSyntaxError');
-const { NAMESPACE } = require('./CssModulesOptimizePlugin');
+const CssModulesOptimizePlugin = require('./CssModulesOptimizePlugin');
 
 function loader(content, map, meta) {
   const options = getOptions(this) || {};
@@ -40,17 +40,6 @@ function loader(content, map, meta) {
 
   const callback = this.async();
   const sourceMap = options.sourceMap || false;
-  const { _compiler: compiler } = this;
-
-  const parentCompiler = compiler.isChild()
-    ? compiler.parentCompilation.compiler
-    : null;
-
-  const treeShakingPlugin = parentCompiler
-    ? parentCompiler.options.plugins.find(
-        (p) => p.NAMESPACE && p.NAMESPACE === NAMESPACE
-      )
-    : this[NAMESPACE];
 
   /* eslint-disable no-param-reassign */
   if (sourceMap) {
@@ -202,8 +191,10 @@ function loader(content, map, meta) {
         return acc;
       }, {});
 
-      if (treeShakingPlugin) {
-        treeShakingPlugin.files.set(this.request, exportObj);
+      const optimizePluginInstance = CssModulesOptimizePlugin.getPluginFromLoaderContext(this);
+
+      if (optimizePluginInstance) {
+        optimizePluginInstance.files.set(this.request, exportObj);
       }
 
       const exports = exportMessages.reduce((accumulator, message) => {

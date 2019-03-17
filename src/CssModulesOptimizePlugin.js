@@ -5,6 +5,20 @@ class Plugin {
     this.files = new Map();
   }
 
+  static getPluginFromLoaderContext(loaderContext) {
+    const { _compiler: compiler } = loaderContext;
+
+    const parentCompiler = compiler.isChild()
+      ? compiler.parentCompilation.compiler
+      : null;
+
+    return parentCompiler
+      ? parentCompiler.options.plugins.find(
+        (p) => p.NAMESPACE && p.NAMESPACE === NAMESPACE
+      )
+      : loaderContext[NAMESPACE];
+  }
+
   get NAMESPACE() {
     return NAMESPACE;
   }
