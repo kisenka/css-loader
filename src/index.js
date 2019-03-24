@@ -185,16 +185,17 @@ function loader(content, map, meta) {
         (message) => message.type === 'export'
       );
 
-      const exportObj = exportMessages.reduce((acc, message) => {
+      const classes = exportMessages.reduce((acc, message) => {
         const { key, value } = message.item;
         acc[key] = value;
         return acc;
       }, {});
 
-      const optimizePluginInstance = CssModulesOptimizePlugin.getPluginFromLoaderContext(this);
-
+      const optimizePluginInstance = CssModulesOptimizePlugin.getPluginFromLoaderContext(
+        this
+      );
       if (optimizePluginInstance) {
-        optimizePluginInstance.files.set(this.request, exportObj);
+        optimizePluginInstance.addMapping(this, classes);
       }
 
       const exports = exportMessages.reduce((accumulator, message) => {
