@@ -1,8 +1,39 @@
 const NAMESPACE = __filename;
 
+function getCssModuleParents(cssModule, modules, parentModule) {
+  const res = modules
+    .map((module) => {
+      const depModules = module.dependencies
+        .filter((d) => d.module)
+        .map(({ module }) => module)
+        .filter((m, index, self) => self.indexOf(m) === index);
+
+      if (depModules.length === 0) {
+        return null;
+      } else if (depModules.includes(cssModule)) {
+        return parentModule || module;
+      }
+
+      const parents = getCssModuleParents(
+        cssModule,
+        depModules,
+        parentModule || module
+      );
+      if (!parents || parents.length === 0) {
+        return null;
+      }
+
+      return parentModule || module;
+    })
+    .filter(Boolean)
+    .filter((m) => m.type.startsWith('javascript/'));
+
+  return res;
+}
+
 class Plugin {
   constructor() {
-    this.files = new Map();
+    this.mappings = new Map();
   }
 
   static getPluginFromLoaderContext(loaderContext) {
@@ -14,13 +45,18 @@ class Plugin {
 
     return parentCompiler
       ? parentCompiler.options.plugins.find(
-        (p) => p.NAMESPACE && p.NAMESPACE === NAMESPACE
-      )
+          (p) => p.NAMESPACE && p.NAMESPACE === NAMESPACE
+        )
       : loaderContext[NAMESPACE];
   }
 
   get NAMESPACE() {
     return NAMESPACE;
+  }
+
+  addMapping(loaderContext, classes) {
+    const { request: file } = loaderContext;
+    this.mappings.set(file, classes);
   }
 
   apply(compiler) {
@@ -34,35 +70,24 @@ class Plugin {
           loaderCtx[NAMESPACE] = this;
         });
 
-        // normalModuleFactory.hooks.parser
-        //   .for("javascript/auto")
-        //   .tap(NAMESPACE, this.handler.bind(this));
+        normalModuleFactory.hooks.parser
+          .for('javascript/auto')
+          .tap(NAMESPACE, this.handler.bind(this));
 
         compilation.hooks.afterOptimizeModules.tap(NAMESPACE, (modules) => {
-          const { files: classesByRequest } = this;
+          const { mappings } = this;
 
-          const styleModules = modules
+          const data = modules
             .map((module) => {
-              const classes = classesByRequest.get(module.request);
-              return classes ? { classes, module } : null;
+              const mapping = mappings.get(module.request);
+              return mapping ? { module, mapping } : null;
             })
             .filter(Boolean);
 
-          styleModules.forEach(({ module }) => {
-            const parentModule = modules.find(
-              (m) =>
-                m.dependencies
-                  .map((d) => d.module)
-                  .filter(Boolean)
-                  .filter((m) => m === module).length > 0
-            );
-
-            if (parentModule) {
-              module.parentModule = parentModule;
-            }
+          data.forEach((item) => {
+            const { module: cssModule } = item;
+            item.parents = getCssModuleParents(cssModule, modules);
           });
-
-          debugger;
         });
       }
     );
@@ -70,7 +95,7 @@ class Plugin {
 
   handler(parser) {
     parser.hooks.program.tap(NAMESPACE, (ast) => {
-      debugger;
+      const a = 1;
     });
   }
 }
