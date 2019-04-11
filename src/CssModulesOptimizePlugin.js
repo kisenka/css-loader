@@ -57,6 +57,7 @@ function getModuleReplaceSource(module, compilation) {
 
 class Plugin {
   constructor() {
+    this.cssImports = new Map();
     this.mappings = new Map();
   }
 
@@ -79,8 +80,7 @@ class Plugin {
   }
 
   addMapping(loaderContext, classes) {
-    const { request: file } = loaderContext;
-    this.mappings.set(file, classes);
+    this.mappings.set(loaderContext.request, classes);
   }
 
   apply(compiler) {
@@ -168,21 +168,75 @@ class Plugin {
     })
   }
 
+  addCssImport(module, data) {
+    const id = module.request;
+    const existing = this.cssImports.get(id);
+
+    if (!existing) {
+      this.cssImports.set(id, [data]);
+      return;
+    }
+
+    existing.push(data);
+  }
+
   handler(parser) {
+    parser.hooks.importSpecifier.tap(NAMESPACE, (expr, request, exportName, identifier) => {
+      if (request.endsWith('.css')) {
+        this.addCssImport(parser.state.module, {
+          range: expr.range,
+          request,
+          identifier,
+          usages: []
+        });
+      }
+    });
+
+    parser.hooks.expressionAnyMember
+      .for('imported var')
+      .tap(NAMESPACE, (expr) => {
+        const varName = expr.object.name;
+        const imports = this.cssImports.get(parser.state.module.request);
+        const data = imports
+          ? imports.find(item => item.identifier === varName)
+          : null;
+
+        if (data) {
+          data.usages.push({
+            range: expr.range,
+            prop: expr.property.name || expr.property.value
+          });
+          void 0;
+        }
+      });
+
+    parser.hooks.import.tap(NAMESPACE, (expr) => {
+      const currentModule = parser.state.module;
+
+      const isCssModuleImport =
+        expr.source.value.endsWith('.css') &&
+        expr.specifiers.length > 0;
+
+      if (isCssModuleImport) {
+        void 0;
+      }
+    });
+
+    parser.hooks.expression
+      .for("imported var")
+      .tap(NAMESPACE, (expr) => {
+        const p1 = parser;
+        void 0;
+      });
+
     parser.hooks.program.tap(NAMESPACE, ast => {
+      const p3 = parser;
       acornWalk.simple(ast, {
         MemberExpression(node) {
           void 0;
         }
       });
     });
-
-    // parser.hooks.importSpecifier.tap(NAMESPACE, (ast) => {
-    // });
-
-    // parser.hooks.program.tap(NAMESPACE, (ast) => {
-    //   const a = 1;
-    // });
   }
 }
 
