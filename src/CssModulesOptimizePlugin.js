@@ -79,8 +79,19 @@ class Plugin {
     return NAMESPACE;
   }
 
-  addMapping(loaderContext, classes) {
-    this.mappings.set(loaderContext.request, classes);
+  addMapping(module, classes) {
+    this.mappings.set(module, classes);
+  }
+
+  addCssImport(module, data) {
+    const existing = this.cssImports.get(module);
+
+    if (!existing) {
+      this.cssImports.set(module, [data]);
+      return;
+    }
+
+    existing.push(data);
   }
 
   apply(compiler) {
@@ -98,60 +109,40 @@ class Plugin {
           .tap(NAMESPACE, this.handler.bind(this));
 
         compilation.hooks.beforeModuleAssets.tap(NAMESPACE, () => {
-          const { mappings } = this;
+          const { mappings, cssImports } = this;
 
-          const data = compilation.modules
-            .map((module) => {
-              const mapping = mappings.get(module.request);
-              return mapping ? { module, mapping } : null;
-            })
-            .filter(Boolean);
+          compilation.modules.forEach(module => {
+            if (!mappings.has(module)) {
+              return;
+            }
 
-          data.forEach((item) => {
-            const { module: cssModule, mapping } = item;
-            const parents = getCssModuleParents(cssModule, compilation.modules);
+            const mapping = mappings.get(module);
+            const parents = getCssModuleParents(module, compilation.modules);
 
             parents.forEach(parentModule => {
-              const deps = parentModule.dependencies
-                .filter(dep => dep.module && dep instanceof HarmonyImportSpecifierDependency && dep.module === cssModule);
+              if (!cssImports.has(parentModule)) {
+                return;
+              }
 
-              const replaceSource = getModuleReplaceSource(parentModule, compilation);
-              const parentSource = parentModule.originalSource().source();
-              const ast = acorn.parse(parentSource, {
-                ecmaVersion: 2019,
-                sourceType: "module",
-                onComment: null
+              cssImports.get(parentModule).forEach(data => {
+                data.usages
+                  .filter(usage => !!mapping[usage.prop])
+                  .forEach(usage => {
+                    // const dep = parentModule.dependencies
+                    //   .find(d => d.range && d.range.toString() === usage.objectRange.toString());
+
+                    const replaceSource = getModuleReplaceSource(parentModule, compilation);
+
+                    const replacement = replaceSource.replacements
+                      .find(r => r.start === usage.objectRange[0] && r.end === usage.objectRange[1] - 1);
+
+                    replacement.end = usage.range[1] - 1;
+                    replacement.content = JSON.stringify(mapping[usage.prop]);
+                    void 0;
+                  });
               });
-
-              acornWalk.simple(ast, {
-                MemberExpression(node) {
-                  const { object, property } = node;
-                  const dep = deps.find(d => d.name === object.name && d.range[0] === object.start && d.range[1] === object.end);
-                  const replaceTo = dep && mapping[property.name];
-
-                  if (replaceTo) {
-                    // replaceSource.replace(node.start, node.end, JSON.stringify(replaceTo));
-                    const replaceValue = JSON.stringify(replaceTo);
-                    const varName = dep.getImportVar();
-                    const r = replaceSource.replacements.find(r => r.content.startsWith(varName) && r.start === node.start);
-                    r.start = node.start;
-                    r.end = node.end - 1;
-                    r.content = replaceValue;
-                  }
-                }
-              });
-
-              void 0;
             });
           });
-
-          // const s = modules[0].source(
-          //   compilation.dependencyTemplates,
-          //   compilation.runtimeTemplate
-          // );
-
-          void 0;
-
         });
       }
     );
@@ -166,18 +157,6 @@ class Plugin {
 
       done();
     })
-  }
-
-  addCssImport(module, data) {
-    const id = module.request;
-    const existing = this.cssImports.get(id);
-
-    if (!existing) {
-      this.cssImports.set(id, [data]);
-      return;
-    }
-
-    existing.push(data);
   }
 
   handler(parser) {
@@ -196,47 +175,19 @@ class Plugin {
       .for('imported var')
       .tap(NAMESPACE, (expr) => {
         const varName = expr.object.name;
-        const imports = this.cssImports.get(parser.state.module.request);
+        const imports = this.cssImports.get(parser.state.module);
         const data = imports
           ? imports.find(item => item.identifier === varName)
           : null;
 
         if (data) {
           data.usages.push({
+            objectRange: expr.object.range,
             range: expr.range,
             prop: expr.property.name || expr.property.value
           });
-          void 0;
         }
       });
-
-    parser.hooks.import.tap(NAMESPACE, (expr) => {
-      const currentModule = parser.state.module;
-
-      const isCssModuleImport =
-        expr.source.value.endsWith('.css') &&
-        expr.specifiers.length > 0;
-
-      if (isCssModuleImport) {
-        void 0;
-      }
-    });
-
-    parser.hooks.expression
-      .for("imported var")
-      .tap(NAMESPACE, (expr) => {
-        const p1 = parser;
-        void 0;
-      });
-
-    parser.hooks.program.tap(NAMESPACE, ast => {
-      const p3 = parser;
-      acornWalk.simple(ast, {
-        MemberExpression(node) {
-          void 0;
-        }
-      });
-    });
   }
 }
 

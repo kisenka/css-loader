@@ -195,7 +195,7 @@ function loader(content, map, meta) {
         this
       );
       if (optimizePluginInstance) {
-        optimizePluginInstance.addMapping(this, classes);
+        optimizePluginInstance.addMapping(this._module, classes);
       }
 
       const exports = exportMessages.reduce((accumulator, message) => {
