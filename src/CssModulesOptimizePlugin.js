@@ -1,7 +1,3 @@
-const HarmonyImportSpecifierDependency = require('webpack/lib/dependencies/HarmonyImportSpecifierDependency');
-const acorn = require('acorn');
-const acornWalk = require('acorn-walk');
-
 const NAMESPACE = __filename;
 
 function getCssModuleParents(cssModule, modules, parentModule) {
@@ -128,14 +124,14 @@ class Plugin {
                 data.usages
                   .filter(usage => !!mapping[usage.prop])
                   .forEach(usage => {
-                    // const dep = parentModule.dependencies
-                    //   .find(d => d.range && d.range.toString() === usage.objectRange.toString());
-
                     const replaceSource = getModuleReplaceSource(parentModule, compilation);
 
                     const replacement = replaceSource.replacements
                       .find(r => r.start === usage.objectRange[0] && r.end === usage.objectRange[1] - 1);
 
+                    if (!replacement) {
+                      return;
+                    }
                     replacement.end = usage.range[1] - 1;
                     replacement.content = JSON.stringify(mapping[usage.prop]);
                     void 0;
