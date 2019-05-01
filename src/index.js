@@ -197,83 +197,86 @@ function loader(content, map, meta) {
         this
       );
 
-      const cssModule = this._module;
-      const isChildCompiler = this._compiler.isChild();
-      const modulesToSearchIn = [].concat(
-        this._compilation.modules,
-        isChildCompiler ? this._compiler.parentCompilation.modules : []
-      );
-      const isExtractPlugin =
-        this._compilation.name &&
-        this._compilation.name.startsWith('mini-css-extract-plugin');
+      if (optimizePlugin) {
+        const cssModule = this._module;
+        const isChildCompiler = this._compiler.isChild();
+        const modulesToSearchIn = [].concat(
+          this._compilation.modules,
+          isChildCompiler ? this._compiler.parentCompilation.modules : []
+        );
+        const isExtractPlugin =
+          this._compilation.name &&
+          this._compilation.name.startsWith('mini-css-extract-plugin');
 
-      if (isExtractPlugin) {
-        debugger;
-      }
+        const parents = getCssModuleParents({
+          cssModule,
+          modules: modulesToSearchIn,
+          isExtractPlugin,
+        }).filter((m) => optimizePlugin.cssImports.has(m));
 
-      const parents = getCssModuleParents({
-        cssModule,
-        modules: modulesToSearchIn,
-        isExtractPlugin,
-      }).filter((m) => optimizePlugin.cssImports.has(m));
+        const usages = new Set();
 
-      const usages = new Set();
+        parents.forEach((parentModule) => {
+          const cssImports = optimizePlugin.cssImports.get(parentModule);
+          const depsIdentifiers = parentModule.dependencies
+            .filter((d) => d.module)
+            .filter(({ module }) => {
+              const { request } = module;
+              const requestParts = module.request.split('!');
+              requestParts.shift();
+              const requestWithoutFirstLoader = requestParts.join('!');
+              return (
+                cssModule.request === request ||
+                cssModule.request === requestWithoutFirstLoader
+              );
+            })
+            .filter((d) => d.name)
+            .map((d) => d.request)
+            .filter((d, index, self) => self.indexOf(d) === index);
 
-      parents.forEach((parentModule) => {
-        const cssImports = optimizePlugin.cssImports.get(parentModule);
-        const depsIdentifiers = parentModule.dependencies
-          .filter((d) => d.module)
-          .filter(({ module }) => {
-            const { request } = module;
-            const requestParts = module.request.split('!');
-            requestParts.shift();
-            const requestWithoutFirstLoader = requestParts.join('!');
-            return (
-              cssModule.request === request ||
-              cssModule.request === requestWithoutFirstLoader
-            );
-          })
-          .filter((d) => d.name)
-          .map((d) => d.request)
-          .filter((d, index, self) => self.indexOf(d) === index);
+          const thisModuleImports = cssImports.filter((i) =>
+            depsIdentifiers.includes(i.request)
+          );
 
-        const thisModuleImports = cssImports.filter((i) =>
-          depsIdentifiers.includes(i.request)
+          thisModuleImports
+            .reduce((acc, { usages }) => acc.concat(usages), [])
+            .forEach((usage) => {
+              usages.add(usage.prop);
+            });
+        });
+
+        const hashedSelectorsToClassNames = Object.keys(classes).reduce(
+          (acc, className) => {
+            acc[classes[className]] = className;
+            return acc;
+          },
+          {}
         );
 
-        thisModuleImports
-          .reduce((acc, { usages }) => acc.concat(usages), [])
-          .forEach((usage) => {
-            usages.add(usage.prop);
-          });
-      });
+        result.root.walkRules((rule) => {
+          const hashedSelector = rule.selector.substr(1);
+          const className = hashedSelectorsToClassNames[hashedSelector];
+          const msg = exportMessages.find((msg) => msg.item.key === className);
 
-      const hashedSelectorsToClassNames = Object.keys(classes).reduce(
-        (acc, className) => {
-          acc[classes[className]] = className;
-          return acc;
-        },
-        {}
-      );
+          if (msg && rule.parent.type === 'root' && !usages.has(className)) {
+            rule.remove();
 
-      result.root.walkRules((rule) => {
-        const hashedSelector = rule.selector.substr(1);
-        const className = hashedSelectorsToClassNames[hashedSelector];
-        const msg = exportMessages.find((msg) => msg.item.key === className);
+            // Remove export msg
+            exportMessages.splice(exportMessages.indexOf(msg), 1);
+          }
+        });
 
-        if (
-          msg &&
-          className !== 'global-class-name' &&
-          !usages.has(className)
-        ) {
-          rule.remove();
-
-          // Remove export msg
-          exportMessages.splice(exportMessages.indexOf(msg), 1);
+        if (isExtractPlugin) {
+          this._compilation.compiler.parentCompilation.modules
+            .filter((module) => {
+              const requestParts = module.request.split('!');
+              requestParts.shift();
+              const requestWithoutFirstLoader = requestParts.join('!');
+              return this._module.request === requestWithoutFirstLoader;
+            })
+            .forEach((m) => optimizePlugin.addMapping(m, classes));
         }
-      });
 
-      if (optimizePlugin) {
         optimizePlugin.addMapping(this._module, classes);
       }
 

@@ -47,7 +47,7 @@ class Plugin {
   }
 
   addMapping(module, classes) {
-    this.mappings.set(module, classes);
+    this.mappings.set(module.request, classes);
   }
 
   addCssImport(module, data) {
@@ -64,7 +64,7 @@ class Plugin {
   apply(compiler) {
     const { NAMESPACE } = this;
 
-    compiler.hooks.compilation.tap(
+    compiler.hooks.thisCompilation.tap(
       NAMESPACE,
       (compilation, { normalModuleFactory }) => {
         compilation.hooks.normalModuleLoader.tap(NAMESPACE, (loaderCtx) => {
@@ -81,15 +81,15 @@ class Plugin {
           compilation.modules.forEach((module) => {
             const r = getModuleReplaceSource;
 
-            if (!mappings.has(module)) {
+            if (!mappings.has(module.request)) {
               return;
             }
 
-            const mapping = mappings.get(module);
+            const mapping = mappings.get(module.request);
 
-            const isExtractPlugin = compilation.name.startsWith(
-              'mini-css-extract-plugin'
-            );
+            const isExtractPlugin =
+              compilation.name &&
+              compilation.name.startsWith('mini-css-extract-plugin');
 
             const modulesToSearchIn = [].concat(
               compilation.modules,
@@ -101,9 +101,7 @@ class Plugin {
             const parents = getCssModuleParents({
               cssModule: module,
               modules: modulesToSearchIn,
-              isExtractPlugin: compilation.name.startsWith(
-                'mini-css-extract-plugin'
-              ),
+              isExtractPlugin,
             });
 
             parents.forEach((parentModule) => {
