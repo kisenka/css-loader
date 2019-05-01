@@ -10,6 +10,37 @@ const extractImports = require('postcss-modules-extract-imports');
 const modulesScope = require('postcss-modules-scope');
 const modulesValues = require('postcss-modules-values');
 
+function getCssModuleParents(cssModule, modules, parentModule) {
+  const res = modules
+    .map((module) => {
+      const depModules = module.dependencies
+        .filter((d) => d.module)
+        .map(({ module }) => module)
+        .filter((m, index, self) => self.indexOf(m) === index);
+
+      if (depModules.length === 0) {
+        return null;
+      } else if (depModules.includes(cssModule)) {
+        return parentModule || module;
+      }
+
+      const parents = getCssModuleParents(
+        cssModule,
+        depModules,
+        parentModule || module
+      );
+      if (!parents || parents.length === 0) {
+        return null;
+      }
+
+      return parentModule || module;
+    })
+    .filter(Boolean)
+    .filter((m) => m.type.startsWith('javascript/'));
+
+  return res;
+}
+
 const {
   getOptions,
   isUrlRequest,
@@ -191,11 +222,53 @@ function loader(content, map, meta) {
         return acc;
       }, {});
 
-      const optimizePluginInstance = CssModulesOptimizePlugin.getPluginFromLoaderContext(
+      const optimizePlugin = CssModulesOptimizePlugin.getPluginFromLoaderContext(
         this
       );
-      if (optimizePluginInstance) {
-        optimizePluginInstance.addMapping(this._module, classes);
+
+      const cssModule = this._module;
+
+      const parents = getCssModuleParents(cssModule, this._compilation.modules)
+        .filter(m => optimizePlugin.cssImports.has(m));
+
+      const usages = new Set();
+
+      parents.forEach(module => {
+        const cssImports = optimizePlugin.cssImports.get(module);
+        let thisModuleImports = cssImports.filter(i => i.request === cssModule.rawRequest);
+        // FIXME find css import in more reliable way
+        if (thisModuleImports.length === 0) {
+          thisModuleImports = cssImports.filter(i => i.request === cssModule.issuer.rawRequest);
+        }
+
+        thisModuleImports
+          .reduce((acc, { usages }) => acc.concat(usages), [])
+          .forEach(usage => {
+            usages.add(usage.prop);
+          });
+      });
+
+      const hashedSelectorsToClassNames = Object.keys(classes).reduce((acc, className) => {
+        acc[classes[className]] = className;
+        return acc;
+      }, {});
+
+      result.root.walkRules(rule => {
+        const hashedSelector = rule.selector.substr(1);
+        const className = hashedSelectorsToClassNames[hashedSelector];
+        const msg = exportMessages.find(msg => msg.item.key === className);
+
+        if (msg && className !== 'global-class-name' && !usages.has(className)) {
+          rule.remove();
+
+          // Remove export msg
+
+          exportMessages.splice(exportMessages.indexOf(msg), 1);
+        }
+      });
+
+      if (optimizePlugin) {
+        optimizePlugin.addMapping(this._module, classes);
       }
 
       const exports = exportMessages.reduce((accumulator, message) => {
@@ -274,7 +347,7 @@ function loader(content, map, meta) {
           )}), ${JSON.stringify(media)});`;
         }, this);
 
-      let cssAsString = JSON.stringify(result.css).replace(
+      let cssAsString = JSON.stringify(result.root.toString()).replace(
         placholderRegExps.importItemG,
         importItemReplacer
       );

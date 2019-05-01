@@ -159,7 +159,6 @@ class Plugin {
     parser.hooks.importSpecifier.tap(NAMESPACE, (expr, request, exportName, identifier) => {
       if (request.endsWith('.css')) {
         this.addCssImport(parser.state.module, {
-          range: expr.range,
           request,
           identifier,
           usages: []
