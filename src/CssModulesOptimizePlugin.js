@@ -1,35 +1,6 @@
 const NAMESPACE = __filename;
 
-function getCssModuleParents(cssModule, modules, parentModule) {
-  const res = modules
-    .map((module) => {
-      const depModules = module.dependencies
-        .filter((d) => d.module)
-        .map(({ module }) => module)
-        .filter((m, index, self) => self.indexOf(m) === index);
-
-      if (depModules.length === 0) {
-        return null;
-      } else if (depModules.includes(cssModule)) {
-        return parentModule || module;
-      }
-
-      const parents = getCssModuleParents(
-        cssModule,
-        depModules,
-        parentModule || module
-      );
-      if (!parents || parents.length === 0) {
-        return null;
-      }
-
-      return parentModule || module;
-    })
-    .filter(Boolean)
-    .filter((m) => m.type.startsWith('javascript/'));
-
-  return res;
-}
+const getCssModuleParents = require('./get-css-module-parents');
 
 function getModuleReplaceSource(module, compilation) {
   const webpackVersion = 4;
@@ -93,7 +64,7 @@ class Plugin {
   apply(compiler) {
     const { NAMESPACE } = this;
 
-    compiler.hooks.thisCompilation.tap(
+    compiler.hooks.compilation.tap(
       NAMESPACE,
       (compilation, { normalModuleFactory }) => {
         compilation.hooks.normalModuleLoader.tap(NAMESPACE, (loaderCtx) => {
@@ -107,31 +78,58 @@ class Plugin {
         compilation.hooks.beforeModuleAssets.tap(NAMESPACE, () => {
           const { mappings, cssImports } = this;
 
-          compilation.modules.forEach(module => {
+          compilation.modules.forEach((module) => {
+            const r = getModuleReplaceSource;
+
             if (!mappings.has(module)) {
               return;
             }
 
             const mapping = mappings.get(module);
-            const parents = getCssModuleParents(module, compilation.modules);
 
-            parents.forEach(parentModule => {
+            const isExtractPlugin = compilation.name.startsWith(
+              'mini-css-extract-plugin'
+            );
+
+            const modulesToSearchIn = [].concat(
+              compilation.modules,
+              isExtractPlugin
+                ? compilation.compiler.parentCompilation.modules
+                : []
+            );
+
+            const parents = getCssModuleParents({
+              cssModule: module,
+              modules: modulesToSearchIn,
+              isExtractPlugin: compilation.name.startsWith(
+                'mini-css-extract-plugin'
+              ),
+            });
+
+            parents.forEach((parentModule) => {
               if (!cssImports.has(parentModule)) {
                 return;
               }
 
-              cssImports.get(parentModule).forEach(data => {
+              cssImports.get(parentModule).forEach((data) => {
                 data.usages
-                  .filter(usage => !!mapping[usage.prop])
-                  .forEach(usage => {
-                    const replaceSource = getModuleReplaceSource(parentModule, compilation);
+                  .filter((usage) => !!mapping[usage.prop])
+                  .forEach((usage) => {
+                    const replaceSource = getModuleReplaceSource(
+                      parentModule,
+                      compilation
+                    );
 
-                    const replacement = replaceSource.replacements
-                      .find(r => r.start === usage.objectRange[0] && r.end === usage.objectRange[1] - 1);
+                    const replacement = replaceSource.replacements.find(
+                      (r) =>
+                        r.start === usage.objectRange[0] &&
+                        r.end === usage.objectRange[1] - 1
+                    );
 
                     if (!replacement) {
                       return;
                     }
+
                     replacement.end = usage.range[1] - 1;
                     replacement.content = JSON.stringify(mapping[usage.prop]);
                     void 0;
@@ -152,19 +150,22 @@ class Plugin {
       );
 
       done();
-    })
+    });
   }
 
   handler(parser) {
-    parser.hooks.importSpecifier.tap(NAMESPACE, (expr, request, exportName, identifier) => {
-      if (request.endsWith('.css')) {
-        this.addCssImport(parser.state.module, {
-          request,
-          identifier,
-          usages: []
-        });
+    parser.hooks.importSpecifier.tap(
+      NAMESPACE,
+      (expr, request, exportName, identifier) => {
+        if (request.endsWith('.css')) {
+          this.addCssImport(parser.state.module, {
+            request,
+            identifier,
+            usages: [],
+          });
+        }
       }
-    });
+    );
 
     parser.hooks.expressionAnyMember
       .for('imported var')
@@ -172,14 +173,14 @@ class Plugin {
         const varName = expr.object.name;
         const imports = this.cssImports.get(parser.state.module);
         const data = imports
-          ? imports.find(item => item.identifier === varName)
+          ? imports.find((item) => item.identifier === varName)
           : null;
 
         if (data) {
           data.usages.push({
             objectRange: expr.object.range,
             range: expr.range,
-            prop: expr.property.name || expr.property.value
+            prop: expr.property.name || expr.property.value,
           });
         }
       });
