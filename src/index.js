@@ -212,12 +212,12 @@ function loader(content, map, meta) {
           cssModule,
           modules: modulesToSearchIn,
           isExtractPlugin,
-        }).filter((m) => optimizePlugin.cssImports.has(m));
+        }).filter((m) => optimizePlugin.cssImports.has(m.request));
 
         const usages = new Set();
 
         parents.forEach((parentModule) => {
-          const cssImports = optimizePlugin.cssImports.get(parentModule);
+          const cssImports = optimizePlugin.cssImports.get(parentModule.request);
           const depsIdentifiers = parentModule.dependencies
             .filter((d) => d.module)
             .filter(({ module }) => {

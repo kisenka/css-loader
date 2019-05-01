@@ -50,11 +50,11 @@ class Plugin {
     this.mappings.set(module.request, classes);
   }
 
-  addCssImport(module, data) {
-    const existing = this.cssImports.get(module);
+  addCssImport(key, data) {
+    const existing = this.cssImports.get(key);
 
     if (!existing) {
-      this.cssImports.set(module, [data]);
+      this.cssImports.set(key, [data]);
       return;
     }
 
@@ -105,11 +105,11 @@ class Plugin {
             });
 
             parents.forEach((parentModule) => {
-              if (!cssImports.has(parentModule)) {
+              if (!cssImports.has(parentModule.request)) {
                 return;
               }
 
-              cssImports.get(parentModule).forEach((data) => {
+              cssImports.get(parentModule.request).forEach((data) => {
                 data.usages
                   .filter((usage) => !!mapping[usage.prop])
                   .forEach((usage) => {
@@ -156,7 +156,7 @@ class Plugin {
       NAMESPACE,
       (expr, request, exportName, identifier) => {
         if (request.endsWith('.css')) {
-          this.addCssImport(parser.state.module, {
+          this.addCssImport(parser.state.module.request, {
             request,
             identifier,
             usages: [],
@@ -169,7 +169,7 @@ class Plugin {
       .for('imported var')
       .tap(NAMESPACE, (expr) => {
         const varName = expr.object.name;
-        const imports = this.cssImports.get(parser.state.module);
+        const imports = this.cssImports.get(parser.state.module.request);
         const data = imports
           ? imports.find((item) => item.identifier === varName)
           : null;
