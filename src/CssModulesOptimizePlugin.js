@@ -43,15 +43,19 @@ class Plugin {
     return NAMESPACE;
   }
 
-  addCssImport(key, data) {
-    const existing = this.cssImports.get(key);
+  addCssImport(module, data) {
+    const existing = this.getCssImportsForModule(module);
 
     if (!existing) {
-      this.cssImports.set(key, [data]);
+      this.cssImports.set(module.request, [data]);
       return;
     }
 
     existing.push(data);
+  }
+
+  getCssImportsForModule(module) {
+    return this.cssImports.get(module.request);
   }
 
   apply(compiler) {
@@ -79,9 +83,9 @@ class Plugin {
       NAMESPACE,
       (expr, request, exportName, identifier) => {
         if (request.endsWith('.css')) {
-          this.addCssImport(parser.state.module.request, {
+          this.addCssImport(parser.state.module, {
             request,
-            identifier,
+            name: identifier,
             usages: [],
           });
         }
@@ -92,9 +96,9 @@ class Plugin {
       .for('imported var')
       .tap(NAMESPACE, (expr) => {
         const varName = expr.object.name;
-        const imports = this.cssImports.get(parser.state.module.request);
+        const imports = this.getCssImportsForModule(parser.state.module);
         const data = imports
-          ? imports.find((item) => item.identifier === varName)
+          ? imports.find((item) => item.name === varName)
           : null;
 
         if (data) {
@@ -111,12 +115,12 @@ class Plugin {
     const { cssImports } = this;
 
     compilation.modules.forEach((module) => {
-      if (!cssImports.has(module.request)) {
+      const imports = this.getCssImportsForModule(module);
+      if (!imports) {
         return;
       }
 
-      const usages = cssImports.get(module.request)
-        .reduce((acc, i) => acc.concat(i.usages), []);
+      const usages = imports.reduce((acc, i) => acc.concat(i.usages), []);
 
       const replaceSource = getModuleReplaceSource(
         module,

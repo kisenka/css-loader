@@ -206,8 +206,6 @@ function loader(content, map, meta) {
           .filter((m) => optimizePlugin.cssImports.has(m.request));
 
         parents.forEach((parentModule) => {
-          const cssImports = optimizePlugin.cssImports.get(parentModule.request);
-
           const importsFromDeps = parentModule.dependencies
             .filter(d => d instanceof HarmonyImportSpecifierDependency)
             .filter(d => d.module.resource === cssModule.resource)
@@ -216,8 +214,10 @@ function loader(content, map, meta) {
               return acc;
             }, {});
 
+          const cssImports = optimizePlugin.getCssImportsForModule(parentModule);
+
           cssImports
-            .filter(i => i.identifier in importsFromDeps && importsFromDeps[i.identifier] === i.request)
+            .filter(i => i.name in importsFromDeps && importsFromDeps[i.name] === i.request)
             .reduce((acc, i) => acc.concat(i.usages), [])
             .forEach(usage => {
               usages.add(usage.prop);
