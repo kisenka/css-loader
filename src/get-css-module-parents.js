@@ -1,7 +1,16 @@
-module.exports = function getCssModuleParents(opts) {
-  const { cssModule, modules, parentModule, isExtractPlugin = false } = opts;
+module.exports = function getCssModuleParents(cssModule, compilation, parentModule) {
+  const isChildCompiler = compilation.compiler.isChild();
 
-  const res = modules
+  const modulesToSearchIn = [].concat(
+    compilation.modules,
+    isChildCompiler ? compilation.compiler.parentCompilation.modules : []
+  );
+
+  const isExtractPlugin =
+    compilation.name &&
+    compilation.name.startsWith('mini-css-extract-plugin');
+
+  const res = modulesToSearchIn
     .map((module) => {
       const depModules = module.dependencies
         .filter((d) => d.module)
@@ -25,11 +34,11 @@ module.exports = function getCssModuleParents(opts) {
         return cssModuleDepModule ? parentModule || module : null;
       }
 
-      const parents = getCssModuleParents({
+      const parents = getCssModuleParents(
         cssModule,
-        modules: depModules,
-        parentModule: parentModule || module,
-      });
+        compilation,
+        parentModule || module
+      );
 
       if (!parents || parents.length === 0) {
         return null;

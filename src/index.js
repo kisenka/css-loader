@@ -10,6 +10,8 @@ const extractImports = require('postcss-modules-extract-imports');
 const modulesScope = require('postcss-modules-scope');
 const modulesValues = require('postcss-modules-values');
 
+const HarmonyImportSpecifierDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSpecifierDependency');
+
 const {
   getOptions,
   isUrlRequest,
@@ -187,76 +189,46 @@ function loader(content, map, meta) {
         (message) => message.type === 'export'
       );
 
-      const classes = exportMessages.reduce((acc, message) => {
-        const { key, value } = message.item;
-        acc[key] = value;
-        return acc;
-      }, {});
-
       const optimizePlugin = CssModulesOptimizePlugin.getPluginFromLoaderContext(
         this
       );
 
       if (optimizePlugin) {
+        const classes = exportMessages.reduce((acc, msg) => {
+          acc[msg.item.key] = msg.item.value;
+          return acc;
+        }, {});
+
         const cssModule = this._module;
-        const isChildCompiler = this._compiler.isChild();
-        const modulesToSearchIn = [].concat(
-          this._compilation.modules,
-          isChildCompiler ? this._compiler.parentCompilation.modules : []
-        );
-        const isExtractPlugin =
-          this._compilation.name &&
-          this._compilation.name.startsWith('mini-css-extract-plugin');
-
-        const parents = getCssModuleParents({
-          cssModule,
-          modules: modulesToSearchIn,
-          isExtractPlugin,
-        }).filter((m) => optimizePlugin.cssImports.has(m.request));
-
         const usages = new Set();
+
+        const parents = getCssModuleParents(cssModule, this._compilation)
+          .filter((m) => optimizePlugin.cssImports.has(m.request));
 
         parents.forEach((parentModule) => {
           const cssImports = optimizePlugin.cssImports.get(parentModule.request);
-          const depsIdentifiers = parentModule.dependencies
-            .filter((d) => d.module)
-            .filter(({ module }) => {
-              const { request } = module;
-              const requestParts = module.request.split('!');
-              requestParts.shift();
-              const requestWithoutFirstLoader = requestParts.join('!');
-              return (
-                cssModule.request === request ||
-                cssModule.request === requestWithoutFirstLoader
-              );
-            })
-            .filter((d) => d.name)
-            .map((d) => d.request)
-            .filter((d, index, self) => self.indexOf(d) === index);
 
-          const thisModuleImports = cssImports.filter((i) =>
-            depsIdentifiers.includes(i.request)
-          );
+          const importsFromDeps = parentModule.dependencies
+            .filter(d => d instanceof HarmonyImportSpecifierDependency)
+            .filter(d => d.module.resource === cssModule.resource)
+            .reduce((acc, dep) => {
+              acc[dep.name] = dep.request;
+              return acc;
+            }, {});
 
-          thisModuleImports
-            .reduce((acc, { usages }) => acc.concat(usages), [])
-            .forEach((usage) => {
+          cssImports
+            .filter(i => i.identifier in importsFromDeps && importsFromDeps[i.identifier] === i.request)
+            .reduce((acc, i) => acc.concat(i.usages), [])
+            .forEach(usage => {
               usages.add(usage.prop);
+              usage.value = classes[usage.prop];
             });
         });
 
-        const hashedSelectorsToClassNames = Object.keys(classes).reduce(
-          (acc, className) => {
-            acc[classes[className]] = className;
-            return acc;
-          },
-          {}
-        );
-
         result.root.walkRules((rule) => {
-          const hashedSelector = rule.selector.substr(1);
-          const className = hashedSelectorsToClassNames[hashedSelector];
-          const msg = exportMessages.find((msg) => msg.item.key === className);
+          const hashedClassName = rule.selector.substr(1);
+          const msg = exportMessages.find(msg => msg.item.value === hashedClassName);
+          const className = msg && msg.item.key;
 
           if (msg && rule.parent.type === 'root' && !usages.has(className)) {
             rule.remove();
@@ -265,19 +237,6 @@ function loader(content, map, meta) {
             exportMessages.splice(exportMessages.indexOf(msg), 1);
           }
         });
-
-        if (isExtractPlugin) {
-          this._compilation.compiler.parentCompilation.modules
-            .filter((module) => {
-              const requestParts = module.request.split('!');
-              requestParts.shift();
-              const requestWithoutFirstLoader = requestParts.join('!');
-              return this._module.request === requestWithoutFirstLoader;
-            })
-            .forEach((m) => optimizePlugin.addMapping(m, classes));
-        }
-
-        optimizePlugin.addMapping(this._module, classes);
       }
 
       const exports = exportMessages.reduce((accumulator, message) => {
