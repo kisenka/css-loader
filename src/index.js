@@ -10,6 +10,7 @@ const extractImports = require('postcss-modules-extract-imports');
 const modulesScope = require('postcss-modules-scope');
 const modulesValues = require('postcss-modules-values');
 
+const HarmonyImportSideEffectDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSideEffectDependency');
 const HarmonyImportSpecifierDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSpecifierDependency');
 
 const {
@@ -21,8 +22,6 @@ const {
   stringifyRequest,
 } = require('loader-utils');
 const camelCase = require('lodash/camelCase');
-
-const getCssModuleParents = require('./get-css-module-parents');
 
 const schema = require('./options.json');
 const { importParser, icssParser, urlParser } = require('./plugins');
@@ -142,7 +141,7 @@ function loader(content, map, meta) {
           }
         : null,
     })
-    .then((result) => {
+    .then(async (result) => {
       result
         .warnings()
         .forEach((warning) => this.emitWarning(new Warning(warning)));
@@ -194,18 +193,37 @@ function loader(content, map, meta) {
       );
 
       if (optimizePlugin) {
+        const cssModule = this._module;
+
+        // Get module parents
+        const compilation = this._compilation;
+        const isChildCompiler = compilation.compiler.isChild();
+
+        const allModules = []
+          .concat(
+            compilation.modules,
+            isChildCompiler ? compilation.compiler.parentCompilation.modules : []
+          )
+          .filter(module => optimizePlugin.cssImports.has(module.request));
+
+        const parents = allModules.filter(module => {
+          const cssModuleDep = module.dependencies
+            .filter(d => d instanceof HarmonyImportSideEffectDependency)
+            .find(d => d.module.resource === cssModule.resource);
+
+          return !!cssModuleDep;
+        });
+
         const classes = exportMessages.reduce((acc, msg) => {
           acc[msg.item.key] = msg.item.value;
           return acc;
         }, {});
 
-        const cssModule = this._module;
         const usages = new Set();
 
-        const parents = getCssModuleParents(cssModule, this._compilation)
-          .filter((m) => optimizePlugin.cssImports.has(m.request));
-
         parents.forEach((parentModule) => {
+          // Map with current CSS file imports only
+          // { styles: './styles.css' }
           const importsFromDeps = parentModule.dependencies
             .filter(d => d instanceof HarmonyImportSpecifierDependency)
             .filter(d => d.module.resource === cssModule.resource)
@@ -225,11 +243,14 @@ function loader(content, map, meta) {
             });
         });
 
+        // Removing unused selectors
         result.root.walkRules((rule) => {
           const hashedClassName = rule.selector.substr(1);
           const msg = exportMessages.find(msg => msg.item.value === hashedClassName);
           const className = msg && msg.item.key;
 
+          // add support for at-rules
+          // add support for multiselectors with CSSTree
           if (msg && rule.parent.type === 'root' && !usages.has(className)) {
             rule.remove();
 

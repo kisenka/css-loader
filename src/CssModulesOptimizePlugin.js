@@ -86,6 +86,7 @@ class Plugin {
           this.addCssImport(parser.state.module, {
             request,
             name: identifier,
+            range: expr.range,
             usages: [],
           });
         }
@@ -112,8 +113,6 @@ class Plugin {
   }
 
   replaceInModulesHook(compilation) {
-    const { cssImports } = this;
-
     compilation.modules.forEach((module) => {
       const imports = this.getCssImportsForModule(module);
       if (!imports) {
@@ -122,6 +121,7 @@ class Plugin {
 
       const usages = imports.reduce((acc, i) => acc.concat(i.usages), []);
 
+      // TODO clarify
       const replaceSource = getModuleReplaceSource(
         module,
         compilation
