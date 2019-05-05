@@ -52,7 +52,7 @@ class Plugin {
   }
 
   addCssImport(module, data) {
-    const existing = this.getCssImportsForModule(module);
+    const existing = this.getModuleImports(module);
 
     if (!existing) {
       this.cssImports.set(module.request, [data]);
@@ -62,7 +62,7 @@ class Plugin {
     existing.push(data);
   }
 
-  getCssImportsForModule(module) {
+  getModuleImports(module) {
     return this.cssImports.get(module.request);
   }
 
@@ -75,7 +75,7 @@ class Plugin {
     const usages = [];
 
     parents.forEach((parentModule) => {
-      const cssImportsUsages = this.getCssImportsForModule(parentModule)
+      const cssImportsUsages = this.getModuleImports(parentModule)
         .reduce((acc, i) => acc.concat(i.usages), []);
 
       parentModule.dependencies
@@ -130,7 +130,7 @@ class Plugin {
       .for('imported var')
       .tap(NAMESPACE, (expr) => {
         const varName = expr.object.name;
-        const imports = this.getCssImportsForModule(parser.state.module);
+        const imports = this.getModuleImports(parser.state.module);
         const data = imports
           ? imports.find((item) => item.name === varName)
           : null;
@@ -147,7 +147,7 @@ class Plugin {
 
   replaceInModulesHook(compilation) {
     compilation.modules.forEach((module) => {
-      const imports = this.getCssImportsForModule(module);
+      const imports = this.getModuleImports(module);
       if (!imports) {
         return;
       }
