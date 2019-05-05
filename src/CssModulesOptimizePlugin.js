@@ -1,3 +1,4 @@
+const HarmonyImportSpecifierDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSpecifierDependency');
 const HarmonyImportSideEffectDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSideEffectDependency');
 
 const NAMESPACE = __filename;
@@ -30,7 +31,7 @@ class Plugin {
    * @param {Compilation} compilation
    * @return {NormalModule[]}
    */
-  getModuleParents(cssModule, compilation) {
+  getModuleJsParents(cssModule, compilation) {
     const isChildCompiler = compilation.compiler.isChild();
 
     const allModules = [].concat(
@@ -63,6 +64,32 @@ class Plugin {
 
   getCssImportsForModule(module) {
     return this.cssImports.get(module.request);
+  }
+
+  /**
+   * @param {NormalModule} cssModule
+   * @param {NormalModule[]} parents
+   * @return {Array<{ prop: string, range: number[], objectRange: number[] }>}
+   */
+  findCssModuleUsagesInParents(cssModule, parents) {
+    const usages = [];
+
+    parents.forEach((parentModule) => {
+      const cssImportsUsages = this.getCssImportsForModule(parentModule)
+        .reduce((acc, i) => acc.concat(i.usages), []);
+
+      parentModule.dependencies
+        .filter(d => d instanceof HarmonyImportSpecifierDependency)
+        .filter(d => d.module.resource === cssModule.resource)
+        .forEach(d => {
+          const usage = cssImportsUsages
+            .find(usage => usage.objectRange.toString() === d.range.toString());
+
+          usages.push(usage);
+        });
+    });
+
+    return usages;
   }
 
   apply(compiler) {

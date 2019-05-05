@@ -192,48 +192,37 @@ function loader(content, map, meta) {
       );
 
       if (optimizePlugin) {
-        const cssModule = this._module;
-        const parents = optimizePlugin.getModuleParents(cssModule, this._compilation);
-
         const classes = exportMessages.reduce((acc, msg) => {
           acc[msg.item.key] = msg.item.value;
           return acc;
         }, {});
 
-        const usages = new Set();
+        const cssModule = this._module;
+        const jsParents = optimizePlugin.getModuleJsParents(cssModule, this._compilation);
+        const usages = optimizePlugin.findCssModuleUsagesInParents(cssModule, jsParents);
 
-        parents.forEach((parentModule) => {
-          const cssImportsUsages = optimizePlugin.getCssImportsForModule(parentModule)
-            .reduce((acc, i) => acc.concat(i.usages), []);
-
-          parentModule.dependencies
-            .filter(d => d instanceof HarmonyImportSpecifierDependency)
-            .filter(d => d.module.resource === cssModule.resource)
-            .map(d => {
-              return cssImportsUsages.find(usage => usage.objectRange.toString() === d.range.toString())
-            })
-            .forEach(usage => {
-              const value = classes[usage.prop];
-              usage.value = value;
-              usages.add(value);
-            });
+        usages.forEach(usage => {
+          usage.value = classes[usage.prop];
         });
 
         // Removing unused selectors
-        result.root.walkRules((rule) => {
-          const hashedClassName = rule.selector.substr(1);
-          const isExported = exportMessages.find(msg => msg.item.value === hashedClassName);
-          const isWasUsed = usages.has(hashedClassName);
+        if (jsParents.length > 0) {
+          result.root.walkRules((rule) => {
+            const hashedClassName = rule.selector.substr(1);
+            const exportMsg = exportMessages.find(msg => msg.item.value === hashedClassName);
+            const prop = exportMsg && exportMsg.item.key;
+            const isUsed = !!usages.find(usage => usage.prop === prop);
 
-          // TODO add support for at-rules
-          // TODO add support for multiselectors with CSSTree
-          if (isExported && !isWasUsed && rule.parent.type === 'root') {
-            rule.remove();
+            // TODO add support for at-rules
+            // TODO add support for multiselectors with CSSTree
+            if (exportMsg && !isUsed && rule.parent.type === 'root') {
+              rule.remove();
 
-            // Remove export msg
-            exportMessages.splice(exportMessages.indexOf(isExported), 1);
-          }
-        });
+              // Remove export msg
+              exportMessages.splice(exportMessages.indexOf(exportMsg), 1);
+            }
+          });
+        }
       }
 
       const exports = exportMessages.reduce((accumulator, message) => {
