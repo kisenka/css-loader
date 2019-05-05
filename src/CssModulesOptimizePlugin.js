@@ -1,24 +1,6 @@
+const HarmonyImportSideEffectDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSideEffectDependency');
+
 const NAMESPACE = __filename;
-
-function getModuleReplaceSource(module, compilation) {
-  const webpackVersion = 4;
-
-  const args = [compilation.dependencyTemplates];
-
-  // eslint-disable-next-line no-magic-numbers
-  if (webpackVersion <= 3) {
-    args.push(compilation.outputOptions);
-    args.push(compilation.requestShortener);
-  } else if (webpackVersion >= 4) {
-    args.push(compilation.runtimeTemplate);
-  }
-
-  const cachedSource = module.source(...args);
-
-  return typeof cachedSource.replace === 'function'
-    ? cachedSource
-    : cachedSource._source;
-}
 
 class Plugin {
   constructor() {
@@ -41,6 +23,31 @@ class Plugin {
 
   get NAMESPACE() {
     return NAMESPACE;
+  }
+
+  /**
+   * @param {NormalModule} cssModule
+   * @param {Compilation} compilation
+   * @return {NormalModule[]}
+   */
+  getModuleParents(cssModule, compilation) {
+    const isChildCompiler = compilation.compiler.isChild();
+
+    const allModules = [].concat(
+      compilation.modules,
+      isChildCompiler ? compilation.compiler.parentCompilation.modules : []
+    )
+    .filter(module => this.cssImports.has(module.request));
+
+    const parents = allModules.filter(module => {
+      const cssModuleDep = module.dependencies
+        .filter(d => d instanceof HarmonyImportSideEffectDependency)
+        .find(d => d.module.resource === cssModule.resource);
+
+      return !!cssModuleDep;
+    });
+
+    return parents;
   }
 
   addCssImport(module, data) {
@@ -86,7 +93,6 @@ class Plugin {
           this.addCssImport(parser.state.module, {
             request,
             name: identifier,
-            range: expr.range,
             usages: [],
           });
         }
@@ -122,10 +128,9 @@ class Plugin {
       const usages = imports.reduce((acc, i) => acc.concat(i.usages), []);
 
       // TODO clarify
-      const replaceSource = getModuleReplaceSource(
-        module,
-        compilation
-      );
+      const replaceSource = module
+        .source(compilation.dependencyTemplates, compilation.runtimeTemplate)
+        ._source;
 
       usages
         .filter(usage => !!usage.value)

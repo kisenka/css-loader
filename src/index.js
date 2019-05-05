@@ -10,7 +10,6 @@ const extractImports = require('postcss-modules-extract-imports');
 const modulesScope = require('postcss-modules-scope');
 const modulesValues = require('postcss-modules-values');
 
-const HarmonyImportSideEffectDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSideEffectDependency');
 const HarmonyImportSpecifierDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSpecifierDependency');
 
 const {
@@ -194,25 +193,7 @@ function loader(content, map, meta) {
 
       if (optimizePlugin) {
         const cssModule = this._module;
-
-        // Get module parents
-        const compilation = this._compilation;
-        const isChildCompiler = compilation.compiler.isChild();
-
-        const allModules = []
-          .concat(
-            compilation.modules,
-            isChildCompiler ? compilation.compiler.parentCompilation.modules : []
-          )
-          .filter(module => optimizePlugin.cssImports.has(module.request));
-
-        const parents = allModules.filter(module => {
-          const cssModuleDep = module.dependencies
-            .filter(d => d instanceof HarmonyImportSideEffectDependency)
-            .find(d => d.module.resource === cssModule.resource);
-
-          return !!cssModuleDep;
-        });
+        const parents = optimizePlugin.getModuleParents(cssModule, this._compilation);
 
         const classes = exportMessages.reduce((acc, msg) => {
           acc[msg.item.key] = msg.item.value;
@@ -222,40 +203,35 @@ function loader(content, map, meta) {
         const usages = new Set();
 
         parents.forEach((parentModule) => {
-          // Map with current CSS file imports only
-          // { styles: './styles.css' }
-          const importsFromDeps = parentModule.dependencies
+          const cssImportsUsages = optimizePlugin.getCssImportsForModule(parentModule)
+            .reduce((acc, i) => acc.concat(i.usages), []);
+
+          parentModule.dependencies
             .filter(d => d instanceof HarmonyImportSpecifierDependency)
             .filter(d => d.module.resource === cssModule.resource)
-            .reduce((acc, dep) => {
-              acc[dep.name] = dep.request;
-              return acc;
-            }, {});
-
-          const cssImports = optimizePlugin.getCssImportsForModule(parentModule);
-
-          cssImports
-            .filter(i => i.name in importsFromDeps && importsFromDeps[i.name] === i.request)
-            .reduce((acc, i) => acc.concat(i.usages), [])
+            .map(d => {
+              return cssImportsUsages.find(usage => usage.objectRange.toString() === d.range.toString())
+            })
             .forEach(usage => {
-              usages.add(usage.prop);
-              usage.value = classes[usage.prop];
+              const value = classes[usage.prop];
+              usage.value = value;
+              usages.add(value);
             });
         });
 
         // Removing unused selectors
         result.root.walkRules((rule) => {
           const hashedClassName = rule.selector.substr(1);
-          const msg = exportMessages.find(msg => msg.item.value === hashedClassName);
-          const className = msg && msg.item.key;
+          const isExported = exportMessages.find(msg => msg.item.value === hashedClassName);
+          const isWasUsed = usages.has(hashedClassName);
 
-          // add support for at-rules
-          // add support for multiselectors with CSSTree
-          if (msg && rule.parent.type === 'root' && !usages.has(className)) {
+          // TODO add support for at-rules
+          // TODO add support for multiselectors with CSSTree
+          if (isExported && !isWasUsed && rule.parent.type === 'root') {
             rule.remove();
 
             // Remove export msg
-            exportMessages.splice(exportMessages.indexOf(msg), 1);
+            exportMessages.splice(exportMessages.indexOf(isExported), 1);
           }
         });
       }
