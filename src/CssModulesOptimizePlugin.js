@@ -1,7 +1,13 @@
-const HarmonyImportSpecifierDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSpecifierDependency');
-const HarmonyImportSideEffectDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSideEffectDependency');
+const HarmonyImportSpecifierDependency = require.main.require(
+  'webpack/lib/dependencies/HarmonyImportSpecifierDependency'
+);
+const HarmonyImportSideEffectDependency = require.main.require(
+  'webpack/lib/dependencies/HarmonyImportSideEffectDependency'
+);
 
 const NAMESPACE = __filename;
+
+const CustomDependency = require('./CustomDependency');
 
 class Plugin {
   constructor() {
@@ -34,16 +40,17 @@ class Plugin {
   getModuleJsParents(cssModule, compilation) {
     const isChildCompiler = compilation.compiler.isChild();
 
-    const allModules = [].concat(
-      compilation.modules,
-      isChildCompiler ? compilation.compiler.parentCompilation.modules : []
-    )
-    .filter(module => this.cssImports.has(module.request));
+    const allModules = []
+      .concat(
+        compilation.modules,
+        isChildCompiler ? compilation.compiler.parentCompilation.modules : []
+      )
+      .filter((module) => this.cssImports.has(module.request));
 
-    const parents = allModules.filter(module => {
+    const parents = allModules.filter((module) => {
       const cssModuleDep = module.dependencies
-        .filter(d => d instanceof HarmonyImportSideEffectDependency)
-        .find(d => d.module.resource === cssModule.resource);
+        .filter((d) => d instanceof HarmonyImportSideEffectDependency)
+        .find((d) => d.module.resource === cssModule.resource);
 
       return !!cssModuleDep;
     });
@@ -75,15 +82,18 @@ class Plugin {
     const usages = [];
 
     parents.forEach((parentModule) => {
-      const cssImportsUsages = this.getModuleImports(parentModule)
-        .reduce((acc, i) => acc.concat(i.usages), []);
+      const cssImportsUsages = this.getModuleImports(parentModule).reduce(
+        (acc, i) => acc.concat(i.usages),
+        []
+      );
 
       parentModule.dependencies
-        .filter(d => d instanceof HarmonyImportSpecifierDependency)
-        .filter(d => d.module.resource === cssModule.resource)
-        .forEach(d => {
-          const usage = cssImportsUsages
-            .find(usage => usage.objectRange.toString() === d.range.toString());
+        .filter((d) => d instanceof HarmonyImportSpecifierDependency)
+        .filter((d) => d.module.resource === cssModule.resource)
+        .forEach((d) => {
+          const usage = cssImportsUsages.find(
+            (usage) => usage.objectRange.toString() === d.range.toString()
+          );
 
           usages.push(usage);
         });
@@ -98,6 +108,11 @@ class Plugin {
     compiler.hooks.thisCompilation.tap(
       NAMESPACE,
       (compilation, { normalModuleFactory }) => {
+        compilation.dependencyTemplates.set(
+          CustomDependency,
+          new CustomDependency.Template()
+        );
+
         normalModuleFactory.hooks.parser
           .for('javascript/auto')
           .tap(NAMESPACE, this.extractCssImportsHook.bind(this));
@@ -106,8 +121,42 @@ class Plugin {
           loaderCtx[NAMESPACE] = this;
         });
 
-        compilation.hooks.beforeModuleAssets
-          .tap(NAMESPACE, () => this.replaceInModulesHook(compilation));
+        compilation.hooks.afterOptimizeDependencies.tap(
+          NAMESPACE,
+          (modules) => {
+            modules
+              .filter((module) => this.cssImports.has(module.request))
+              .forEach((module) => {
+                const imports = this.cssImports.get(module.request);
+                const usages = imports.reduce(
+                  (acc, i) => acc.concat(i.usages),
+                  []
+                );
+
+                module.dependencies
+                  .filter((d) => d instanceof HarmonyImportSpecifierDependency)
+                  .forEach((d) => {
+                    const usage = usages.find(
+                      (u) => u.objectRange.toString() === d.range.toString()
+                    );
+
+                    if (!usage || !usage.value) {
+                      return;
+                    }
+
+                    module.removeDependency(d);
+
+                    const dep = new CustomDependency(module, usage);
+                    module.addDependency(dep);
+
+                    void 0;
+                  });
+              });
+          }
+        );
+
+        // compilation.hooks.beforeModuleAssets
+        //   .tap(NAMESPACE, () => this.replaceInModulesHook(compilation));
       }
     );
   }
@@ -145,6 +194,26 @@ class Plugin {
       });
   }
 
+  optimizeCssTree(ast, usages, exportMessages) {
+    root.walkRules((rule) => {
+      const hashedClassName = rule.selector.substr(1);
+      const exportMsg = exportMessages.find(
+        (msg) => msg.item.value === hashedClassName
+      );
+      const prop = exportMsg && exportMsg.item.key;
+      const isUsed = !!usages.find((usage) => usage.prop === prop);
+
+      // TODO add support for at-rules
+      // TODO add support for multiselectors with CSSTree
+      if (exportMsg && !isUsed && rule.parent.type === 'root') {
+        rule.remove();
+
+        // Remove export msg
+        exportMessages.splice(exportMessages.indexOf(exportMsg), 1);
+      }
+    });
+  }
+
   replaceInModulesHook(compilation) {
     compilation.modules.forEach((module) => {
       const imports = this.getModuleImports(module);
@@ -155,13 +224,14 @@ class Plugin {
       const usages = imports.reduce((acc, i) => acc.concat(i.usages), []);
 
       // TODO clarify
-      const replaceSource = module
-        .source(compilation.dependencyTemplates, compilation.runtimeTemplate)
-        ._source;
+      const replaceSource = module.source(
+        compilation.dependencyTemplates,
+        compilation.runtimeTemplate
+      )._source;
 
       usages
-        .filter(usage => !!usage.value)
-        .forEach(usage => {
+        .filter((usage) => !!usage.value)
+        .forEach((usage) => {
           const replacement = replaceSource.replacements.find(
             (r) =>
               r.start === usage.objectRange[0] &&

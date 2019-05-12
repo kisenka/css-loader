@@ -10,7 +10,9 @@ const extractImports = require('postcss-modules-extract-imports');
 const modulesScope = require('postcss-modules-scope');
 const modulesValues = require('postcss-modules-values');
 
-const HarmonyImportSpecifierDependency = require.main.require('webpack/lib/dependencies/HarmonyImportSpecifierDependency');
+const HarmonyImportSpecifierDependency = require.main.require(
+  'webpack/lib/dependencies/HarmonyImportSpecifierDependency'
+);
 
 const {
   getOptions,
@@ -198,30 +200,22 @@ function loader(content, map, meta) {
         }, {});
 
         const cssModule = this._module;
-        const jsParents = optimizePlugin.getModuleJsParents(cssModule, this._compilation);
-        const usages = optimizePlugin.findCssModuleUsagesInParents(cssModule, jsParents);
+        const jsParents = optimizePlugin.getModuleJsParents(
+          cssModule,
+          this._compilation
+        );
+        const usages = optimizePlugin.findCssModuleUsagesInParents(
+          cssModule,
+          jsParents
+        );
 
-        usages.forEach(usage => {
+        usages.forEach((usage) => {
           usage.value = classes[usage.prop];
         });
 
         // Removing unused selectors
         if (jsParents.length > 0) {
-          result.root.walkRules((rule) => {
-            const hashedClassName = rule.selector.substr(1);
-            const exportMsg = exportMessages.find(msg => msg.item.value === hashedClassName);
-            const prop = exportMsg && exportMsg.item.key;
-            const isUsed = !!usages.find(usage => usage.prop === prop);
-
-            // TODO add support for at-rules
-            // TODO add support for multiselectors with CSSTree
-            if (exportMsg && !isUsed && rule.parent.type === 'root') {
-              rule.remove();
-
-              // Remove export msg
-              exportMessages.splice(exportMessages.indexOf(exportMsg), 1);
-            }
-          });
+          optimizePlugin.optimizeCssTree(result.root, usages, exportMessages);
         }
       }
 
