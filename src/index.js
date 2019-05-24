@@ -145,33 +145,33 @@ function loader(content, map, meta) {
       const messages = result.messages || [];
 
       // Get plugin from loader context
-      // const plugin = this['OptimizeCssModulesPlugin'];
+      const plugin = this['OptimizeCssModulesPlugin'];
 
-      // if (plugin) {
+      if (plugin) {
         // Get CSS parent modules
-        // const parents = plugin.getModuleParents(
-        //   this._module,
-        //   this._compilation
-        // );
+        const parents = plugin.getModuleParents(
+          this._module,
+          this._compilation
+        );
 
         // Save final classnames
-        // plugin.saveFinalClassNames(
-        //   this._module,
-        //   parents,
-        //   messages
-        // );
+        plugin.saveFinalClassNames(
+          this._module,
+          parents,
+          messages
+        );
 
         // Remove unused selectors
-        // const allUsages = plugin.getAllUsages();
-        // result.root.walkRules(rule => {
-        //   const isRuleUsed = !!allUsages
-        //     .find(usage => rule.selector.substr(1) === usage.value);
-        //
-        //   if (!isRuleUsed) {
-        //     rule.remove();
-        //   }
-        // });
-      // }
+        const allUsages = plugin.getAllUsages();
+        result.root.walkRules(rule => {
+          const isRuleUsed = !!allUsages
+            .find(usage => rule.selector.substr(1) === usage.value);
+
+          if (!isRuleUsed) {
+            rule.remove();
+          }
+        });
+      }
 
       // Run other loader (`postcss-loader`, `sass-loader` and etc) for importing CSS
       const importUrlPrefix = getImportPrefix(this, options.importLoaders);
@@ -287,8 +287,7 @@ function loader(content, map, meta) {
           )}), ${JSON.stringify(media)});`;
         }, this);
 
-      // let cssAsString = JSON.stringify(result.root.toString()).replace(
-      let cssAsString = JSON.stringify(result.css).replace(
+      let cssAsString = JSON.stringify(result.root.toString()).replace(
         placholderRegExps.importItemG,
         importItemReplacer
       );
